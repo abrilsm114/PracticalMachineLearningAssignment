@@ -1,0 +1,146 @@
+---
+title: "Weight Lifting Prediction Assignment"
+author: "Abril Susana"
+date: "2025-02-20"
+output: html_document
+---
+
+# Introduction
+
+In this project, we aim to predict the manner in which individuals perform a weight lifting exercise using data from accelerometers placed on different body parts. The target variable is "classe", which represents the manner in which the exercise was performed. The dataset includes accelerometer readings from devices on the belt, forearm, arm, and dumbbell of 6 participants.
+
+The goal is to predict the "classe" variable, which represents how the exercise is performed, based on sensor data from the accelerometers. First, let’s load the necessary libraries and the datasets.
+
+```{r loading}
+
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(gbm)
+
+# Load training and test data
+train_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training_set <- read.csv(train_url, na.strings = c("NA","#DIV/0!", ""))
+testing_set <- read.csv(test_url, na.strings = c("NA","#DIV/0!", ""))
+
+```
+
+# Data Cleaning
+
+The dataset has a large number of columns, and many of them contain missing values or irrelevant information, such as user identification. To ensure we use only relevant and reliable data for training our model, we will:
+
+Remove columns with a high percentage of missing values.
+Keep only the numeric columns that are relevant for predicting the target variable.
+Clean out non-numeric variables, such as user identification data.
+
+```{r cleaning}
+
+nearZeroVar <- nearZeroVar(training_set)
+train_data <- training_set[,-nearZeroVar]
+test_data <- testing_set[,-nearZeroVar]
+str(test_data)
+
+NaCols <- sapply(train_data, function(x) mean(is.na(x))) > 0.95
+train_data <- train_data[,NaCols == FALSE]
+test_data <- test_data[,NaCols == FALSE]
+str(test_data)
+
+# Removing the first 6 variables that are non-numeric
+
+train_data <- train_data[,7:59]
+test_data <- test_data[,7:59]
+str(test_data)
+
+```
+
+# Validation set
+
+To evaluate the model’s performance, we will split the data into a training set and a validation set. The training set is used to build the model, and the validation set is used to test how well the model generalizes to unseen data.
+
+```{r validation}
+
+inTrain<- createDataPartition(train_data$classe, p=0.6, list=FALSE)
+training<- train_data[inTrain,]
+validating<- train_data[-inTrain,]
+dim(training)
+dim(validating)
+
+```
+
+# Cross-Validation
+
+Now, let's add cross-validation to ensure we are estimating the model's out-of-sample error effectively. We'll use 10-fold cross-validation, a common method to evaluate model performance.
+
+```{r cross-validation}
+
+# Setting up cross-validation
+train_control <- trainControl(method = "cv", number = 10)
+
+```
+
+
+# Decision Tree Model
+
+A decision tree is a flowchart-like tree structure where each internal node represents a feature, and each leaf node represents a class label. We will build a decision tree model to predict the "classe" variable using the training data. We will also visualize the tree.
+
+```{r decision-tree}
+
+DT_modelfit<- train(classe ~. , data=training, method= "rpart", trControl = train_control)
+fancyRpartPlot(DT_modelfit$finalModel)
+DT_prediction <- predict(DT_modelfit, validating)
+confusionMatrix(as.factor(DT_prediction), as.factor(validating$classe))
+
+```
+
+In the Decision Tree model, we used 10-fold cross-validation to evaluate the out-of-sample error and ensure that the model generalizes well.
+
+# Random Forest Model
+
+A random forest is an ensemble of decision trees. It uses bootstrapping and aggregation to reduce overfitting and improve prediction accuracy. We will train a random forest model and compare its performance with the decision tree model.
+
+```{r random-forest}
+
+RF_modelfit <- train(classe ~ ., data = training, method = "rf", ntree = 100, trControl = train_control)
+RF_prediction<- predict(RF_modelfit, validating)
+qplot(RF_prediction,validating$classe, colour=validating$classe)
+
+```
+
+The Random Forest model uses 10-fold cross-validation to estimate the model’s performance on unseen data.
+
+# Gradient Boosting Model
+
+Gradient boosting is another powerful ensemble technique that combines the predictions of several base learners (typically decision trees) to improve accuracy. We will build and evaluate a gradient boosting model for this task.
+
+```{r gbm}
+
+gbm_modelfit<- train(classe~., data=training, method="gbm", verbose= FALSE, trControl = train_control)
+gbm_prediction<- predict(gbm_modelfit, validating)
+qplot(gbm_prediction,validating$classe, colour=validating$classe)
+
+gbm_confusionMatrix<-confusionMatrix(as.factor(gbm_prediction), as.factor(validating$classe))
+gbm_confusionMatrix
+
+```
+
+Gradient Boosting also benefits from cross-validation to provide a more robust estimate of the model's error.
+
+# Conclusion
+
+Finally, we will apply the best model (in this case, the Random Forest model) to the test dataset to make predictions for new, unseen data. This will demonstrate how well the model generalizes to data outside of the training and validation sets.
+
+```{r prediction}
+
+test_prediction<- predict(RF_modelfit, test_data)
+test_prediction
+
+
+```
+
+The output shows the predicted exercise manner ("classe") for the 20 test cases.
+
+In conclusion, we have built and evaluated several machine learning models (Decision Tree, Random Forest, and Gradient Boosting) to predict the manner in which weight lifting exercises are performed. Based on the performance metrics, we have chosen the Random Forest model for predicting the exercise manner on the test data. This model shows the potential to accurately predict the "classe" variable based on accelerometer data.
